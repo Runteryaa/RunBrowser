@@ -1,0 +1,82 @@
+{
+  "expo": {
+    "name": "RunBrowser",
+    "slug": "RunBrowser",
+    "version": "pre-alpha.0.2",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "runbrowser",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.runterya.browser",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["http", "https"],
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["http", "https"],
+            "CFBundleURLName": "com.runterya.browser"
+          }
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.runterya.browser",
+      "intentFilters": [
+        {
+          "action": "android.intent.action.VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "http"
+            },
+            {
+              "scheme": "https"
+            }
+          ],
+          "category": [
+            "android.intent.category.DEFAULT",
+            "android.intent.category.BROWSABLE"
+          ]
+        }
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aab47f4c-fcd0-472c-b4e9-d6fa02dfb92a"
+      }
+    }
+  }
+}
