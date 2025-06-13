@@ -6,6 +6,7 @@ export interface Tab {
   isLoading?: boolean;
   error?: boolean;
   reloadRequested?: boolean;
+  private: boolean;
 }
 
 export interface Bookmark {

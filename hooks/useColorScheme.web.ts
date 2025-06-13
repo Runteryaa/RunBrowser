@@ -17,5 +17,5 @@ export function useColorScheme() {
     return colorScheme;
   }
 
-  return 'dark';
+  return 'light';
 }

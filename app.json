@@ -2,7 +2,7 @@
   "expo": {
     "name": "RunBrowser",
     "slug": "RunBrowser",
-    "version": "pre-alpha.0.2",
+    "version": "pre-alpha.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "runbrowser",
@@ -12,19 +12,6 @@
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.runterya.browser",
-      "infoPlist": {
-        "LSApplicationQueriesSchemes": ["http", "https"],
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": ["http", "https"],
-            "CFBundleURLName": "com.runterya.browser"
-          }
-        ]
-      }
     },
     "android": {
       "adaptiveIcon": {
@@ -39,23 +26,23 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "http"
+              "scheme": "http",
+              "host": "*",
+              "pathPattern": ".*"
             },
             {
-              "scheme": "https"
+              "scheme": "https",
+              "host": "*",
+              "pathPattern": ".*"
             }
           ],
           "category": [
             "android.intent.category.DEFAULT",
-            "android.intent.category.BROWSABLE"
+            "android.intent.category.BROWSABLE",
+            "android.intent.category.APP_BROWSER"
           ]
         }
       ]
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
