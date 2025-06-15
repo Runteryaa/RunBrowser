@@ -18,7 +18,6 @@
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
     "expo": "~53.0.10",
-    "expo-ads-admob": "^13.0.0",
     "expo-av": "~15.1.6",
     "expo-blur": "~14.1.5",
     "expo-clipboard": "^7.1.4",
