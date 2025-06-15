@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import {
   ChevronRight,
+  Download,
   Home,
   Info,
   Moon,
@@ -163,6 +164,20 @@ export default function SettingsScreen() {
                 thumbColor="#fff"
               />
             }
+            textColor={textColor}
+            textSecondaryColor={textSecondaryColor}
+            borderColor={borderColor}
+          />
+
+          <SettingsItem
+            icon={<Download size={22} color={primaryColor} />}
+            title="Download Folder"
+            value={settings.downloadFolder || 'Downloads'}
+            showArrow
+            onPress={() => {
+              // Show a modal or picker to select/change folder
+              // On confirm: updateSettings({ downloadFolder: newFolder });
+            }}
             textColor={textColor}
             textSecondaryColor={textSecondaryColor}
             borderColor={borderColor}

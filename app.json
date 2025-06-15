@@ -2,7 +2,7 @@
   "expo": {
     "name": "RunBrowser",
     "slug": "RunBrowser",
-    "version": "pre-alpha.1.1",
+    "version": "pre-alpha.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "runbrowser",
@@ -54,7 +54,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true

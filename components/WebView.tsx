@@ -1,9 +1,9 @@
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { useBrowserStore } from '@/store/browserStore';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { BackHandler, Image, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Image, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import VideoPlayer from './VideoPlayer';
+import VideoPlayer from '../app/(tabs)/VideoPlayer';
 
 interface WebViewContainerProps {
   tabId: string;
@@ -12,14 +12,27 @@ interface WebViewContainerProps {
   onLoadProgress?: (progress: number) => void;
   onMessage?: (event: any) => void;
   onContextMenu?: (payload: { type: string; href?: string; text?: string; src?: string }) => void;
-  isPrivate?: boolean; // <-- Add isPrivate prop
+  isPrivate?: boolean;
+  onOpenVideoPlayer?: (video: { url: string; title?: string }) => void;
 }
+
 
 export interface WebViewContainerRef {
   goBack: () => void;
   goForward: () => void;
   stopLoading: () => void;
   injectJavaScript: (script: string) => Promise<void>;
+}
+
+interface ContextMenuData {
+  type: string;
+  href?: string;
+  text?: string;
+  src?: string;
+  videoUrl?: string;
+  title?: string;
+  x?: number;
+  y?: number;
 }
 
 function getFaviconUrl(pageUrl: string) {
@@ -87,11 +100,88 @@ const longPressScript = `
       return null;
     }
 
-    function sendContextMenu(type, href, text, src, videoUrl, title) {
+    function sendContextMenu(type, href, text, src, videoUrl, title, x, y) {
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'contextMenu',
-        payload: { type, href, text, src, videoUrl, title }
+        payload: { type, href, text, src, videoUrl, title, x, y }
       }));
+    }
+
+    function getElementInfo(element, clientX, clientY) {
+      const rect = element.getBoundingClientRect();
+      const info = {
+        x: clientX,
+        y: clientY,
+        tagName: element.tagName.toLowerCase(),
+        className: element.className || '',
+        id: element.id || ''
+      };
+      
+      // Check if target is video or has video parent
+      const video = element.tagName === 'VIDEO' ? element : findVideoParent(element);
+      
+      if (video) {
+        return {
+          ...info,
+          type: 'video',
+          videoUrl: video.currentSrc || video.src,
+          title: document.title
+        };
+      } else if (element.tagName === 'A') {
+        return {
+          ...info,
+          type: 'link',
+          href: element.href,
+          text: element.innerText || element.textContent
+        };
+      } else if (element.tagName === 'IMG') {
+        const src = element.getAttribute('src');
+        const absoluteSrc = new URL(src, window.location.href).href;
+        return {
+          ...info,
+          type: 'image',
+          src: absoluteSrc,
+          alt: element.alt || ''
+        };
+      } else {
+        const selection = window.getSelection();
+        const selectedText = selection.toString().trim();
+        return {
+          ...info,
+          type: selectedText ? 'text' : 'other',
+          text: selectedText
+        };
+      }
+    }
+
+    function handleTouchStart(e) {
+      const target = e.target;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      
+      timer = setTimeout(function() {
+        const elementInfo = getElementInfo(target, startX, startY);
+        sendContextMenu(
+          elementInfo.type,
+          elementInfo.href,
+          elementInfo.text,
+          elementInfo.src,
+          elementInfo.videoUrl,
+          elementInfo.title,
+          elementInfo.x,
+          elementInfo.y
+        );
+      }, 500);
+    }
+
+    function handleTouchEnd() {
+      clearTimeout(timer);
+    }
+
+    function handleTouchMove(e) {
+      if (Math.abs(e.touches[0].clientX - startX) > 10 || Math.abs(e.touches[0].clientY - startY) > 10) {
+        clearTimeout(timer);
+      }
     }
 
     // Handle elements in the main document
@@ -129,76 +219,44 @@ const longPressScript = `
 
     // Add listeners to existing iframes
     document.querySelectorAll('iframe').forEach(addIframeListeners);
-
-    function handleTouchStart(e) {
-      const target = e.target;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      
-      timer = setTimeout(function() {
-        // Check if target is video or has video parent
-        const video = target.tagName === 'VIDEO' ? target : findVideoParent(target);
-        
-        if (video) {
-          sendContextMenu(
-            'video',
-            null,
-            document.title,
-            null,
-            video.currentSrc || video.src,
-            document.title
-          );
-        } else if (target.tagName === 'A') {
-          sendContextMenu('link', target.href, target.innerText, null);
-        } else if (target.tagName === 'IMG') {
-          const src = target.getAttribute('src');
-          // Handle relative URLs
-          const absoluteSrc = new URL(src, window.location.href).href;
-          sendContextMenu('image', null, null, absoluteSrc);
-        }
-      }, 500);
-    }
-
-    function handleTouchEnd() {
-      clearTimeout(timer);
-    }
-
-    function handleTouchMove(e) {
-      if (Math.abs(e.touches[0].clientX - startX) > 10 || Math.abs(e.touches[0].clientY - startY) > 10) {
-        clearTimeout(timer);
-      }
-    }
   })();
   true;
 `;
 
 const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
-  ({ tabId, url, onNavigationStateChange, onLoadProgress, onMessage, onContextMenu, isPrivate }, ref) => {
+  ({
+    tabId,
+    url,
+    onNavigationStateChange,
+    onLoadProgress,
+    onMessage,
+    onContextMenu,
+    isPrivate,
+    onOpenVideoPlayer,
+  }, ref) => {
     const webViewRef = useRef<WebView>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [canGoBack, setCanGoBack] = useState(false);
     const [canGoForward, setCanGoForward] = useState(false);
     const [previewUri, setPreviewUri] = useState<string | null>(null);
+    const [contextMenuData, setContextMenuData] = useState<ContextMenuData | null>(null);
     const updateTab = useBrowserStore((state) => state.updateTab);
     const addToHistory = useBrowserStore((state) => state.addToHistory);
     const backgroundColor = useThemeColor({}, 'background');
     const primaryColor = useThemeColor({}, 'primary');
-  const [siteFavicon, setSiteFavicon] = useState<string | undefined>(undefined);
-  const updateHistoryFavicon = useBrowserStore((state) => state.updateHistoryFavicon);
-  const updateBookmarkFavicon = useBrowserStore((state) => state.updateBookmarkFavicon);
-  const favicons = useBrowserStore((state) => state.favicons);
-  const updateFavicon = useBrowserStore((state) => state.updateFavicon);
-  
-  const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
-  const [videoData, setVideoData] = useState<{
-    url: string;
-    title: string;
-    duration: number;
-    currentTime: number;
-  } | null>(null);
-  const [isInjectionSuccessful, setIsInjectionSuccessful] = useState(false);
-  const injectionRetryCount = useRef(0);
-  const MAX_RETRY_ATTEMPTS = 3;
+    const [siteFavicon, setSiteFavicon] = useState<string | undefined>(undefined);
+    const updateHistoryFavicon = useBrowserStore((state) => state.updateHistoryFavicon);
+    const updateBookmarkFavicon = useBrowserStore((state) => state.updateBookmarkFavicon);
+    const favicons = useBrowserStore((state) => state.favicons);
+    const updateFavicon = useBrowserStore((state) => state.updateFavicon);
+    
+    const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
+    const [videoData, setVideoData] = useState<{
+      url: string;
+      title: string;
+      duration: number;
+      currentTime: number;
+    } | null>(null);
 
     const getCachedFavicon = useCallback((url: string) => {
       try {
@@ -252,6 +310,59 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
       return () => backHandler.remove();
     }, [canGoBack]);
 
+    const handleContextMenuAction = useCallback((action: string) => {
+      if (!contextMenuData) return;
+      
+      const { type, src, href, text, videoUrl } = contextMenuData;
+      
+      switch (action) {
+        case 'copy':
+          if (type === 'image') {
+            Alert.alert('Copy Image', `Image URL: ${src}`);
+          } else if (type === 'link') {
+            Alert.alert('Copy Link', href);
+          } else if (type === 'text') {
+            Alert.alert('Copy Text', text);
+          } else if (type === 'video') {
+            Alert.alert('Copy Video', `Video URL: ${videoUrl}`);
+          }
+          break;
+        case 'share':
+          Alert.alert('Share', `Sharing ${type}`);
+          break;
+        case 'open':
+          if (type === 'link' && href) {
+            webViewRef.current?.injectJavaScript(`window.open('${href}', '_blank'); true;`);
+          }
+          break;
+        case 'openNewTab':
+          if (type === 'link' && href) {
+            // You can implement opening in new tab here
+            Alert.alert('Open in New Tab', href);
+          }
+          break;
+        case 'saveImage':
+          if (type === 'image') {
+            Alert.alert('Save Image', `Saving image: ${src}`);
+          }
+          break;
+        case 'playVideo':
+          if (type === 'video' && videoUrl) {
+            setVideoData({
+              url: videoUrl,
+              title: contextMenuData.title || 'Video',
+              duration: 0,
+              currentTime: 0
+            });
+            setVideoPlayerVisible(true);
+          }
+          break;
+      }
+      
+      setContextMenuData(null);
+    }, [contextMenuData]);
+
+    
     const handleLoadStart = useCallback(() => {
       setIsLoading(true);
       setSiteFavicon(undefined);
@@ -277,39 +388,6 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
       
       onNavigationStateChange(navState);
     }, [onNavigationStateChange, tabId, updateTab, getCachedFavicon]);
-
-    const verifyInjection = useCallback(() => {
-      if (webViewRef.current) {
-        webViewRef.current.injectJavaScript(`
-          (function() {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'injectionVerification',
-              success: true
-            }));
-            return true;
-          })();
-        `);
-      }
-    }, []);
-
-    const retryInjection = useCallback(() => {
-      if (injectionRetryCount.current < MAX_RETRY_ATTEMPTS) {
-        injectionRetryCount.current += 1;
-        console.log(`Retrying injection attempt ${injectionRetryCount.current}`);
-        
-        if (webViewRef.current) {
-          webViewRef.current.injectJavaScript(`
-            ${injectedFaviconScript}
-            ${longPressScript}
-            true;
-          `);
-          
-          setTimeout(verifyInjection, 500);
-        }
-      } else {
-        console.warn('Max injection retry attempts reached');
-      }
-    }, [verifyInjection]);
 
     const handleLoadEnd = useCallback((event: any) => {
       setIsLoading(false);
@@ -340,97 +418,45 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
         error: false,
       });
 
-      // Only add to history if not private
       if (!isPrivate) {
         addToHistory(currentUrl, title, favicon);
       }
       setSiteFavicon(undefined);
-
-      // Reset injection state for new page loads
-      setIsInjectionSuccessful(false);
-      injectionRetryCount.current = 0;
-      
-      // Verify injection after a short delay
-      setTimeout(verifyInjection, 500);
-    }, [tabId, url, updateTab, addToHistory, siteFavicon, getCachedFavicon, updateFavicon, isPrivate, verifyInjection]);
+    }, [tabId, url, updateTab, addToHistory, siteFavicon, getCachedFavicon, updateFavicon, isPrivate]);
 
     const handleLoadError = useCallback(() => {
       setIsLoading(false);
       updateTab(tabId, { isLoading: false, error: true });
     }, [tabId, updateTab]);
 
-    // Modify the onMessage handler
-    const handleMessage = useCallback((event: any) => {
-      try {
-        const data = JSON.parse(event.nativeEvent.data);
-        
-        if (data.type === 'injectionVerification') {
-          setIsInjectionSuccessful(true);
-          injectionRetryCount.current = 0;
-          return;
-        }
+    const addTab = useBrowserStore((state) => state.addTab);
 
-        // Only process other messages if injection was successful
-        if (!isInjectionSuccessful && data.type !== 'injectionVerification') {
-          retryInjection();
-          return;
-        }
-
-        if (data.type === 'videoPlay') {
-          setVideoData(data.data);
-          setVideoPlayerVisible(true);
-          if (onMessage) {
-            onMessage(event);
+    const handleShouldStartLoadWithRequest = useCallback(
+      (request: any) => {
+        if (
+          request.navigationType === 'click' &&
+          request.target !== '_self' &&
+          request.url !== url
+        ) {
+          // Open in new tab in-app
+          if (addTab) {
+            addTab(request.url, { private: !!isPrivate });
           }
+          return false; // Prevent default navigation
         }
-        else if (data.type === 'favicon' && data.favicon && !isPrivate) {
-          setSiteFavicon(data.favicon);
-          updateTab(tabId, { favicon: data.favicon });
-          updateHistoryFavicon(url, data.favicon);
-          updateBookmarkFavicon(url, data.favicon);
-          
-          try {
-            const { hostname } = new URL(url);
-            updateFavicon(hostname, data.favicon);
-          } catch {}
-        }
-        else if (data.type === 'contextMenu' && onContextMenu) {
-          onContextMenu(data.payload);
-        }
-        else if (data.type === 'videoPlay') {
-          setVideoData(data.data);
-          setVideoPlayerVisible(true);
-        }
-        else if (data.type === 'videoPause') {
-          if (videoData && videoData.url === data.data.url) {
-            setVideoData(prev => prev ? { ...prev, currentTime: data.data.currentTime } : null);
-          }
-        }
-        else if (data.type === 'videoTimeUpdate') {
-          if (videoData && videoData.url === data.data.url) {
-            setVideoData(prev => prev ? { ...prev, currentTime: data.data.currentTime } : null);
-          }
-        }
-        else if (data.type === 'videoEnded') {
-          if (videoData && videoData.url === data.data.url) {
-            setVideoPlayerVisible(false);
-            setVideoData(null);
-          }
-        }
-        
-        if (onMessage && !isPrivate) {
-          onMessage(event);
-        }
-      } catch (error) {
-        console.error('Error handling WebView message:', error);
-      }
-    }, [onMessage, tabId, url, updateTab, getCachedFavicon, updateFavicon, isPrivate, retryInjection, videoData, onContextMenu]);
+        // Allow all other navigations
+        return true;
+      },
+      [addTab, isPrivate, url]
+    );
 
     return (
       <View style={[styles.container, { backgroundColor }]}>
         <WebView
           ref={webViewRef}
           source={{ uri: url }}
+          originWhitelist={['*']}
+          setSupportMultipleWindows={false}
           onLoadStart={handleLoadStart}
           onLoadEnd={handleLoadEnd}
           onError={handleLoadError}
@@ -440,7 +466,67 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
               onLoadProgress(event.nativeEvent.progress);
             }
           }}
-          onMessage={handleMessage}
+          onMessage={event => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === 'newTab' && data.url) {
+                addTab(data.url, { private: !!isPrivate });
+                return;
+              }
+              if (data.type === 'videoPlay') {
+                setVideoData(data.data);
+                setVideoPlayerVisible(true);
+                if (onMessage) {
+                  onMessage(event);
+                }
+              }
+              else if (data.type === 'favicon' && data.favicon && !isPrivate) {
+                setSiteFavicon(data.favicon);
+                updateTab(tabId, { favicon: data.favicon });
+                updateHistoryFavicon(url, data.favicon);
+                updateBookmarkFavicon(url, data.favicon);
+                
+                try {
+                  const { hostname } = new URL(url);
+                  updateFavicon(hostname, data.favicon);
+                } catch {}
+              }
+              else if (data.type === 'contextMenu') {
+                setContextMenuData(data.payload);
+                if (onContextMenu) {
+                  onContextMenu(data.payload);
+                }
+              }
+              else if (data.type === 'videoPause') {
+                if (videoData && videoData.url === data.data.url) {
+                  setVideoData(prev => prev ? { ...prev, currentTime: data.data.currentTime } : null);
+                }
+              }
+              else if (data.type === 'videoTimeUpdate') {
+                if (videoData && videoData.url === data.data.url) {
+                  setVideoData(prev => prev ? { ...prev, currentTime: data.data.currentTime } : null);
+                }
+              }
+              else if (data.type === 'videoEnded') {
+                if (videoData && videoData.url === data.data.url) {
+                  setVideoPlayerVisible(false);
+                  setVideoData(null);
+                }
+              }
+              else if (data.type === 'videoPlay' && onOpenVideoPlayer) {
+                onOpenVideoPlayer({
+                  url: data.data.url,
+                  title: data.data.title,
+                });
+              }
+              
+              if (onMessage && !isPrivate) {
+                onMessage(event);
+              }
+            } catch (error) {
+              console.error('Error handling WebView message:', error);
+            }
+          }}
           style={[styles.webView]}
           cacheEnabled={!isPrivate}
           cacheMode={isPrivate ? "LOAD_NO_CACHE" : "LOAD_CACHE_ELSE_NETWORK"}
@@ -448,11 +534,17 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
           thirdPartyCookiesEnabled={!isPrivate}
           startInLoadingState={false}
           injectedJavaScript={`
-            console.log('RunBrowser Script Injection');
+            window.open = function(url, target, features) {
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'newTab', url }));
+              }
+              return null;
+            };
             ${injectedFaviconScript}
             ${longPressScript}
             true;
           `}
+          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
         />
         {previewUri && isLoading && (
           <Image
@@ -462,6 +554,7 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
           />
         )}
         
+        
         {videoPlayerVisible && videoData && (
           <VideoPlayer
             visible={videoPlayerVisible}
@@ -469,7 +562,6 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
             title={videoData.title}
             onClose={() => {
               setVideoPlayerVisible(false);
-              // Inject script to pause the video when closing the player
               if (webViewRef.current) {
                 webViewRef.current.injectJavaScript(`
                   document.querySelector('video[src="${videoData.url}"]')?.pause();
@@ -479,14 +571,6 @@ const WebViewContainer = forwardRef<WebViewContainerRef, WebViewContainerProps>(
             }}
             webViewRef={webViewRef}
           />
-        )}
-        
-        {!isInjectionSuccessful && injectionRetryCount.current >= MAX_RETRY_ATTEMPTS && (
-          <View style={styles.injectionFailureOverlay}>
-            <Text style={styles.injectionFailureText}>
-              Some features might be limited
-            </Text>
-          </View>
         )}
       </View>
     );
@@ -504,17 +588,49 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
   },
-  injectionFailureOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 8,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  injectionFailureText: {
-    color: '#fff',
-    fontSize: 12,
+  contextMenu: {
+    borderRadius: 12,
+    padding: 0,
+    minWidth: 250,
+    maxWidth: 300,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  contextMenuTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    textAlign: 'center',
+  },
+  menuItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  menuText: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#333',
+  },
+  cancelItem: {
+    borderBottomWidth: 0,
+  },
+  cancelText: {
+    color: '#ff4444',
+    fontWeight: 'bold',
   },
 });

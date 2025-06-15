@@ -9,6 +9,7 @@ export interface BrowserSettings {
   blockAds: boolean;
   darkMode: boolean;
   clearOnExit: boolean;
+  downloadFolder: string;
 }
 
 interface DownloadItem {
@@ -103,6 +104,7 @@ export const useBrowserStore = create<BrowserState & BrowserActions>()(
           blockAds: false,
           darkMode: true,
           clearOnExit: false,
+          downloadFolder: 'Downloads',
         },
         downloads: [],
         favicons: {},

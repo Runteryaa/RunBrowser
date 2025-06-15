@@ -1,3 +1,4 @@
+import VideoPlayer from '@/app/(tabs)/VideoPlayer';
 import AddressBar from '@/components/AddressBar';
 import Bookmarks, { BookmarksRef } from '@/components/Bookmarks';
 import ContextMenu from '@/components/ContextMenu';
@@ -35,8 +36,7 @@ export default function BrowserScreen() {
   const [cookies, setCookies] = useState<any[]>([]);
   const [contextMenu, setContextMenu] = useState<{type: string, href?: string, text?: string, src?: string} | null>(null);
   const [videoAvailable, setVideoAvailable] = useState(false);
-  const [currentVideo, setCurrentVideo] = useState<any>(null);
-  
+
   const tabs = useBrowserStore((state: any) => state.tabs);
   const activeTabId = useBrowserStore((state: any) => state.activeTabId);
   const bookmarks = useBrowserStore((state: any) => state.bookmarks);
@@ -212,9 +212,10 @@ export default function BrowserScreen() {
   }
   
   const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
+  const [currentVideo, setCurrentVideo] = useState<any>(null);
+
   function setVideoData(video: any) {
     setCurrentVideo(video);
-    setVideoAvailable(!!video);
   }
   return (
     <View style={[styles.container, { backgroundColor: background, paddingTop: insets.top }]}>
@@ -267,6 +268,10 @@ export default function BrowserScreen() {
           onLoadProgress={handleLoadProgress}
           onMessage={handleWebViewMessage}
           onContextMenu={handleContextMenu}
+          onOpenVideoPlayer={video => {
+            setCurrentVideo(video);
+            setVideoPlayerVisible(true);
+          }}
         />
       </View>
       
@@ -335,6 +340,19 @@ export default function BrowserScreen() {
         onClose={() => setContextMenu(null)}
         onAction={handleContextMenuAction}
       />
+
+      {videoPlayerVisible && currentVideo && (
+        <VideoPlayer
+          visible={videoPlayerVisible}
+          videoUrl={currentVideo.url}
+          title={currentVideo.title}
+          onClose={() => {
+            setVideoPlayerVisible(false);
+            setCurrentVideo(null);
+          }}
+          webViewRef={webViewRef}
+        />
+      )}
     </View>
   );
 }

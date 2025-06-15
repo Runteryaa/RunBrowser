@@ -24,7 +24,7 @@ interface AddressBarProps {
   url: string;
   isLoading: boolean;
   favicon?: string;
-  isPrivate?: boolean; // Add this line
+  isPrivate?: boolean;
   onReload?: () => void;
   onStopLoading?: () => void;
   webViewRef: React.RefObject<WebViewContainerRef | null>;
@@ -147,9 +147,14 @@ export default function AddressBar({
     
     if (isUrl) {
       const url = inputValue.startsWith('http') ? inputValue : `https://${inputValue}`;
-      navigateTo(tabId, url);
+      if (url !== url) {
+        navigateTo(tabId, url);
+      }
     } else {
-      navigateTo(tabId, getSearchUrl(inputValue));
+      const searchUrl = getSearchUrl(inputValue);
+      if (searchUrl !== url) {
+        navigateTo(tabId, searchUrl);
+      }
     }
   };
 
